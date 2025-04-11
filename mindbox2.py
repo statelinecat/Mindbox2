@@ -1,139 +1,124 @@
+# Установка необходимых компонентов
+!apt - get
+install
+openjdk - 11 - jdk - headless - qq > / dev / null
+!pip
+install
+pyspark
+
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col
-import os
-import sys
-import subprocess
-import findspark
+from pyspark.sql.functions import col, lit
+import pandas as pd
+
+# Инициализация Spark в Colab
+spark = SparkSession.builder \
+    .appName("ProductCategoryAnalysis") \
+    .config("spark.driver.memory", "2g") \
+    .config("spark.executor.memory", "2g") \
+    .config("spark.sql.shuffle.partitions", "4") \
+    .master("local[2]") \
+    .getOrCreate()
 
 
-def configure_environment():
-    """Настройка окружения Java и Spark"""
-    # Установка путей к Java (проверьте актуальность пути)
-    java_home = "C:\\Program Files\\Eclipse Adoptium\\jdk-11.0.26.4-hotspot"
-    java_bin = os.path.join(java_home, "bin")
+# Подготовка тестовых данных через Pandas DataFrame (для наглядности)
+def prepare_data():
+    """Создаем тестовые данные и преобразуем в Spark DataFrame"""
+    products_pd = pd.DataFrame({
+        'product_id': [1, 2, 3],
+        'product_name': ['Product A', 'Product B', 'Product C']
+    })
 
-    # Проверка доступности Java
-    try:
-        java_path = os.path.join(java_bin, "java.exe")
-        subprocess.run([java_path, "-version"],
-                       check=True,
-                       stdout=subprocess.PIPE,
-                       stderr=subprocess.PIPE)
-    except Exception as e:
-        print(f"Ошибка доступа к Java: {e}")
-        sys.exit(1)
+    categories_pd = pd.DataFrame({
+        'category_id': [101, 102, 103],
+        'category_name': ['Category X', 'Category Y', 'Category Z']
+    })
 
-    # Настройка переменных окружения
-    os.environ["JAVA_HOME"] = java_home
-    os.environ["PATH"] = f"{java_bin};{os.environ.get('PATH', '')}"
+    relations_pd = pd.DataFrame({
+        'product_id': [1, 1, 1, 2],
+        'category_id': [101, 102, 103, 101]
+    })
 
-    # Инициализация Spark
-    findspark.init()
+    # Конвертация в Spark DataFrame
+    products = spark.createDataFrame(products_pd)
+    categories = spark.createDataFrame(categories_pd)
+    relations = spark.createDataFrame(relations_pd)
 
-
-def create_spark_session():
-    """Создание и настройка Spark сессии"""
-    return SparkSession.builder \
-        .appName("ProductCategoryAnalysis") \
-        .config("spark.driver.memory", "1g") \
-        .config("spark.executor.memory", "1g") \
-        .config("spark.sql.shuffle.partitions", "2") \
-        .config("spark.default.parallelism", "2") \
-        .config("spark.sql.execution.arrow.pyspark.enabled", "true") \
-        .master("local[2]") \
-        .getOrCreate()
+    return products, categories, relations
 
 
-def prepare_test_data(spark):
-    """Подготовка тестовых данных"""
-    products = spark.createDataFrame([
-        (1, "Product A"),
-        (2, "Product B"),
-        (3, "Product C")
-    ], ["product_id", "product_name"])
-
-    categories = spark.createDataFrame([
-        (101, "Category X"),
-        (102, "Category Y"),
-        (103, "Category Z")
-    ], ["category_id", "category_name"])
-
-    product_category = spark.createDataFrame([
-        (1, 101),
-        (1, 102),
-        (1, 103),
-        (2, 101)
-    ], ["product_id", "category_id"])
-
-    return products, categories, product_category
-
-
-def analyze_product_categories(products_df, categories_df, relations_df):
-    """Анализ связей продуктов и категорий"""
-    # Объединение данных
-    product_with_category = products_df.join(
-        relations_df,
-        on="product_id",
-        how="left"
-    ).join(
-        categories_df,
-        on="category_id",
-        how="left"
-    )
-
-    # Все пары продукт-категория
-    pairs = product_with_category.select(
+# Анализ данных с улучшенной обработкой
+def analyze_data(products, categories, relations):
+    """Анализ связей с более читаемым кодом"""
+    # Объединяем данные за один шаг
+    result = (products
+              .join(relations, "product_id", "left")
+              .join(categories, "category_id", "left")
+              .select(
         col("product_name"),
-        col("category_name")
-    ).na.fill("No category", ["category_name"])
+        col("category_name").alias("category")
+    )
+              .fillna("No category", subset=["category"]))
 
-    # Продукты без категорий
-    no_category = product_with_category.filter(
-        col("category_name").isNull()
-    ).select(
-        col("product_name")
-    ).distinct()
+    # Разделяем результаты
+    products_with_categories = result.filter(col("category") != "No category")
+    products_without_categories = result.filter(col("category") == "No category").select("product_name").distinct()
 
-    return pairs, no_category
+    return products_with_categories, products_without_categories
 
 
+# Главная функция выполнения
 def main():
-    """Основная функция выполнения"""
     try:
-        # 1. Настройка окружения
-        configure_environment()
-
-        # 2. Создание Spark сессии
-        spark = create_spark_session()
-
-        # 3. Подготовка данных
-        products, categories, product_category = prepare_test_data(spark)
-
-        # 4. Анализ данных
-        pairs_df, no_category_df = analyze_product_categories(
-            products, categories, product_category
-        )
-
-        # 5. Вывод результатов
-        print("\nРезультаты анализа:")
         print("=" * 50)
-        print("Пары «Продукт - Категория»:")
-        pairs_df.show(truncate=False, n=100)
+        print("Начало обработки данных")
+        print("=" * 50)
+
+        # 1. Подготовка данных
+        products, categories, relations = prepare_data()
+
+        print("\nТестовые данные:")
+        print("Продукты:")
+        products.show()
+        print("\nКатегории:")
+        categories.show()
+        print("\nСвязи:")
+        relations.show()
+
+        # 2. Анализ данных
+        with_cats, without_cats = analyze_data(products, categories, relations)
+
+        # 3. Вывод результатов
+        print("\n" + "=" * 50)
+        print("Результаты анализа")
+        print("=" * 50)
+
+        print("\nПары «Продукт - Категория»:")
+        with_cats.show(truncate=False)
 
         print("\nПродукты без категорий:")
-        no_category_df.show(truncate=False, n=100)
+        without_cats.show(truncate=False)
+
+        # 4. Дополнительная аналитика
+        print("\n" + "=" * 50)
+        print("Дополнительная статистика")
+        print("=" * 50)
+
+        print(f"\nВсего продуктов: {products.count()}")
+        print(f"Продуктов с категориями: {with_cats.select('product_name').distinct().count()}")
+        print(f"Продуктов без категорий: {without_cats.count()}")
 
     except Exception as e:
-        print(f"\nОшибка при выполнении: {str(e)}")
+        print(f"\nОшибка: {str(e)}")
         import traceback
         traceback.print_exc()
 
     finally:
-        # 6. Завершение работы Spark
-        if 'spark' in locals():
-            spark.stop()
-        print("\nЗавершение работы приложения")
+        spark.stop()
+        print("\n" + "=" * 50)
+        print("Обработка завершена")
+        print("=" * 50)
 
 
+# Запуск анализа
 if __name__ == "__main__":
     main()
