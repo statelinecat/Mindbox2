@@ -2,8 +2,8 @@
  Mindbox test2
 
 Демонстрация в Google Colab по ссылке:
-https://colab.research.google.com/drive/1HswCCfum7gOdjKhJgLCj9MAG6V7qh4Pv?usp=sharing
 
+https://colab.research.google.com/drive/1HswCCfum7gOdjKhJgLCj9MAG6V7qh4Pv?usp=sharing
 Задание
 В PySpark приложении используются три датафрейма (pyspark.sql.DataFrame), представляющие продукты, категории и их связи:
 
